@@ -8,11 +8,19 @@ const SUMMARY_SHEET_CANDIDATES = ["장로 개표 집계표", "장로 1차 선거
 const GROUP_SHEET = "조별합계표";
 const DEFAULT_LOCAL_FILE_PATH = path.join(process.cwd(), "system/data/election.xlsx");
 const REQUEST_TIMEOUT_MS = 15000;
+const GRAPH_RESOURCE = "https://graph.microsoft.com";
 
 type WorkbookSource = {
   buffer: Buffer;
   modifiedAt: Date;
 };
+
+type GraphTokenCache = {
+  accessToken: string;
+  expiresAt: number;
+};
+
+let graphTokenCache: GraphTokenCache | null = null;
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -166,6 +174,113 @@ async function fetchWorkbookFromUrl(urlString: string): Promise<WorkbookSource> 
   }
 }
 
+function getGraphConfig() {
+  const tenantId = process.env.MS_TENANT_ID;
+  const clientId = process.env.MS_CLIENT_ID;
+  const clientSecret = process.env.MS_CLIENT_SECRET;
+  const shareUrl = process.env.MS_ONEDRIVE_SHARE_URL;
+
+  if (!tenantId || !clientId || !clientSecret || !shareUrl) {
+    return null;
+  }
+
+  return { tenantId, clientId, clientSecret, shareUrl };
+}
+
+function encodeShareUrlToGraphToken(shareUrl: string): string {
+  return Buffer.from(shareUrl, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+async function getGraphAccessToken(tenantId: string, clientId: string, clientSecret: string): Promise<string> {
+  if (graphTokenCache && Date.now() < graphTokenCache.expiresAt) {
+    return graphTokenCache.accessToken;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "client_credentials",
+      scope: `${GRAPH_RESOURCE}/.default`
+    });
+
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      body,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Graph 토큰 발급 실패 (${response.status})`);
+    }
+
+    const json = (await response.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) {
+      throw new Error("Graph 토큰 응답에 access_token이 없습니다.");
+    }
+
+    const expiresInMs = (json.expires_in ?? 3600) * 1000;
+    graphTokenCache = {
+      accessToken: json.access_token,
+      expiresAt: Date.now() + Math.max(expiresInMs - 60_000, 60_000)
+    };
+
+    return json.access_token;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWorkbookFromGraphShare(config: {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  shareUrl: string;
+}): Promise<WorkbookSource> {
+  const token = await getGraphAccessToken(config.tenantId, config.clientId, config.clientSecret);
+  const encodedShare = encodeShareUrlToGraphToken(config.shareUrl.trim());
+  const contentUrl = `${GRAPH_RESOURCE}/v1.0/shares/u!${encodedShare}/driveItem/content`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(contentUrl, {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Graph 원격 엑셀 요청 실패 (${response.status})`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      modifiedAt: new Date()
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isWorkbookBuffer(buffer: Buffer): boolean {
   try {
     const workbook = XLSX.read(buffer, { type: "buffer" });
@@ -176,6 +291,20 @@ function isWorkbookBuffer(buffer: Buffer): boolean {
 }
 
 async function loadWorkbookSource(filePath: string, remoteUrl?: string): Promise<WorkbookSource> {
+  const graphConfig = getGraphConfig();
+  if (graphConfig) {
+    try {
+      const graphSource = await fetchWorkbookFromGraphShare(graphConfig);
+      if (!isWorkbookBuffer(graphSource.buffer)) {
+        throw new Error("Graph 응답이 엑셀 파일 형식이 아닙니다.");
+      }
+      return graphSource;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Graph 원격 엑셀 조회 실패";
+      console.warn(`[election] Graph fetch failed. fallback to next source: ${message}`);
+    }
+  }
+
   if (remoteUrl) {
     const candidates = buildCandidateUrls(remoteUrl);
     let lastError: Error | null = null;
