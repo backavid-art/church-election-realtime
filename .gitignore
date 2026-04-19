@@ -20,3 +20,4 @@ tsconfig.tsbuildinfo
 
 # macOS
 .DS_Store
+.vercel
