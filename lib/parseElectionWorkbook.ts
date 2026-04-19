@@ -194,6 +194,16 @@ async function loadWorkbookSource(filePath: string, remoteUrl?: string): Promise
     }
 
     if (lastError) {
+      const allowLocalFallback =
+        process.env.ALLOW_LOCAL_FALLBACK === "true" ||
+        (process.env.NODE_ENV !== "production" && process.env.ALLOW_LOCAL_FALLBACK !== "false");
+
+      if (!allowLocalFallback) {
+        throw new Error(
+          `OneDrive 원격 엑셀을 읽지 못했습니다. 링크 공유 권한(익명 다운로드 허용)을 확인하세요: ${lastError.message}`
+        );
+      }
+
       // 원격 조회가 모두 실패하면 로컬 파일로 폴백한다.
       console.warn(`[election] OneDrive URL fetch failed. fallback to local file: ${lastError.message}`);
     }

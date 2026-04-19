@@ -18,7 +18,11 @@
 1. `ONEDRIVE_EXCEL_URL` (원격 OneDrive 링크)
 2. `ELECTION_EXCEL_LOCAL_PATH` (로컬 파일 fallback)
 
-OneDrive 공유 링크가 인증/보안 리디렉션으로 실패할 경우 자동으로 로컬 파일로 전환됩니다.
+`ALLOW_LOCAL_FALLBACK`:
+- 개발 환경 기본값: `true` (원격 실패 시 로컬 전환)
+- 프로덕션 기본값: `false` (원격 실패 시 오류 반환)
+
+프로덕션에서 실시간 반영이 필요하면 OneDrive 링크가 익명 다운로드 가능해야 합니다.
 
 ## 파싱 기준
 - 요약: `장로 개표 집계표` 또는 `장로 1차 선거 개표 집계표`의 `B4:B6`
