@@ -19,6 +19,13 @@
 5. `npm run dev`
 6. 브라우저에서 `/` 접속
 
+## 로컬 OneDrive 실시간 모드(권장)
+1. `.env.local`의 `ELECTION_EXCEL_LOCAL_PATH`를 OneDrive 동기화 엑셀 절대경로로 설정
+2. `npm run dev:local`
+3. `http://localhost:3001` 접속
+
+엑셀 파일을 저장하면 5초 이내에 화면이 자동 갱신됩니다.
+
 ## 데이터 소스 우선순위
 1. `MS_*` Graph 인증 방식 (`MS_ONEDRIVE_SHARE_URL`)
 2. `ONEDRIVE_EXCEL_URL` (익명 공개 링크 방식)
