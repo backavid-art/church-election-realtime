@@ -19,8 +19,8 @@
 2. `ELECTION_EXCEL_LOCAL_PATH` (로컬 파일 fallback)
 
 `ALLOW_LOCAL_FALLBACK`:
-- 개발 환경 기본값: `true` (원격 실패 시 로컬 전환)
-- 프로덕션 기본값: `false` (원격 실패 시 오류 반환)
+- 기본값: `false` (원격 실패 시 오류 반환)
+- 로컬 테스트 시에만 `true`로 설정 (원격 실패 시 로컬 전환)
 
 프로덕션에서 실시간 반영이 필요하면 OneDrive 링크가 익명 다운로드 가능해야 합니다.
 

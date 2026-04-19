@@ -194,9 +194,7 @@ async function loadWorkbookSource(filePath: string, remoteUrl?: string): Promise
     }
 
     if (lastError) {
-      const allowLocalFallback =
-        process.env.ALLOW_LOCAL_FALLBACK === "true" ||
-        (process.env.NODE_ENV !== "production" && process.env.ALLOW_LOCAL_FALLBACK !== "false");
+      const allowLocalFallback = process.env.ALLOW_LOCAL_FALLBACK === "true";
 
       if (!allowLocalFallback) {
         throw new Error(
